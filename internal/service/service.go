@@ -19,13 +19,13 @@ func NewShortenerService(repo interfaces.URLRepository, baseURL string) *Shorten
 	return &ShortenerService{repo: repo, baseURL: baseURL}
 }
 
-func (s *ShortenerService) Shorten(urlString string) (string, error) {
+func (s *ShortenerService) Shorten(original string) (string, error) {
 	id := randString(6)
 	shortened := fmt.Sprintf("%s/%s", s.baseURL, id)
 
 	err := s.repo.Store(&model.URL{
 		ID:        id,
-		Original:  urlString,
+		Original:  original,
 		Shortened: shortened,
 	})
 	if err != nil {

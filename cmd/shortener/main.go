@@ -15,8 +15,8 @@ func main() {
 	urlHandler := handler.NewURLHandler(shortener)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/{id}", urlHandler.GetHandler)
-	mux.HandleFunc("/", urlHandler.PostHandler)
+	mux.HandleFunc("/{id}", urlHandler.RestoreHandler)
+	mux.HandleFunc("/", urlHandler.ShortenHandler)
 
 	err := http.ListenAndServe(":8080", mux)
 	if err != nil {

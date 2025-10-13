@@ -9,14 +9,17 @@ import (
 )
 
 type URLHandler struct {
-	service *service.ShortenerService
+	service interface {
+		Shorten(string) (string, error)
+		Restore(string) (string, error)
+	}
 }
 
 func NewURLHandler(s *service.ShortenerService) *URLHandler {
 	return &URLHandler{service: s}
 }
 
-func (h *URLHandler) PostHandler(res http.ResponseWriter, req *http.Request) {
+func (h *URLHandler) ShortenHandler(res http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodPost || req.URL.Path != "/" {
 		http.Error(res, "Bad request", http.StatusBadRequest)
 		return
@@ -34,7 +37,7 @@ func (h *URLHandler) PostHandler(res http.ResponseWriter, req *http.Request) {
 	res.Write([]byte(shortURL))
 }
 
-func (h *URLHandler) GetHandler(res http.ResponseWriter, req *http.Request) {
+func (h *URLHandler) RestoreHandler(res http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodGet || !pathIsValid(req.URL.Path) {
 		http.Error(res, "Bad request", http.StatusBadRequest)
 		return
