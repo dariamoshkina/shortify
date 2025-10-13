@@ -22,7 +22,7 @@ func (h *URLHandler) PostHandler(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	originalURL, err := io.ReadAll(req.Body)
+	originalURL, _ := io.ReadAll(req.Body)
 	shortURL, err := h.service.Shorten(string(originalURL))
 	if err != nil {
 		http.Error(res, "can't shorten", http.StatusInternalServerError)

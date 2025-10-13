@@ -2,7 +2,7 @@ package main
 
 import (
 	"github.com/dariamoshkina/shortify/internal/handler"
-	"github.com/dariamoshkina/shortify/internal/repository/in_memory"
+	"github.com/dariamoshkina/shortify/internal/repository/inmemory"
 	"github.com/dariamoshkina/shortify/internal/service"
 
 	"net/http"
@@ -10,7 +10,7 @@ import (
 
 func main() {
 	baseURL := "http://localhost:8080"
-	repo := in_memory.NewInMemoryUrlRepository()
+	repo := inmemory.NewInMemoryURLRepository()
 	shortener := service.NewShortenerService(repo, baseURL)
 	urlHandler := handler.NewURLHandler(shortener)
 

@@ -11,11 +11,11 @@ import (
 const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 type ShortenerService struct {
-	repo    interfaces.UrlRepository
+	repo    interfaces.URLRepository
 	baseURL string
 }
 
-func NewShortenerService(repo interfaces.UrlRepository, baseURL string) *ShortenerService {
+func NewShortenerService(repo interfaces.URLRepository, baseURL string) *ShortenerService {
 	return &ShortenerService{repo: repo, baseURL: baseURL}
 }
 
@@ -23,7 +23,7 @@ func (s *ShortenerService) Shorten(urlString string) (string, error) {
 	id := randString(6)
 	shortened := fmt.Sprintf("%s/%s", s.baseURL, id)
 
-	err := s.repo.Store(&model.Url{
+	err := s.repo.Store(&model.URL{
 		ID:        id,
 		Original:  urlString,
 		Shortened: shortened,
