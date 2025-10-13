@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -38,10 +39,10 @@ func newTestHandler() (*URLHandler, *MockShortenerService) {
 	return handler, mockService
 }
 
-func doRequest(handlerFunc http.HandlerFunc, method, target, body string) *httptest.ResponseRecorder {
+func doRequest(router http.Handler, method, target, body string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, target, strings.NewReader(body))
 	w := httptest.NewRecorder()
-	handlerFunc(w, req)
+	router.ServeHTTP(w, req)
 	return w
 }
 
@@ -70,14 +71,14 @@ func TestShortenHandler(t *testing.T) {
 			method:         http.MethodGet,
 			path:           "/",
 			body:           originalURL,
-			expectedStatus: http.StatusBadRequest,
+			expectedStatus: http.StatusMethodNotAllowed,
 		},
 		{
 			name:           "bad path",
 			method:         http.MethodPost,
 			path:           "/shorten",
 			body:           originalURL,
-			expectedStatus: http.StatusBadRequest,
+			expectedStatus: http.StatusMethodNotAllowed,
 		},
 		{
 			name:           "service error",
@@ -96,7 +97,10 @@ func TestShortenHandler(t *testing.T) {
 				mockService.On("Shorten", originalURL).Return(tt.mockReturnURL, tt.mockReturnErr)
 			}
 
-			w := doRequest(handler.ShortenHandler, tt.method, tt.path, tt.body)
+			router := chi.NewRouter()
+			router.Mount("/", handler.Routes())
+
+			w := doRequest(router, tt.method, tt.path, tt.body)
 			resp := w.Result()
 			defer resp.Body.Close()
 
@@ -134,7 +138,7 @@ func TestRestoreHandler(t *testing.T) {
 			name:           "bad method",
 			method:         http.MethodPost,
 			path:           "/" + shortenedID,
-			expectedStatus: http.StatusBadRequest,
+			expectedStatus: http.StatusMethodNotAllowed,
 		},
 		{
 			name:           "invalid path",
@@ -159,12 +163,12 @@ func TestRestoreHandler(t *testing.T) {
 				mockService.On("Restore", shortenedID).Return(tt.mockReturnURL, tt.mockReturnErr)
 			}
 
+			router := chi.NewRouter()
+			router.Mount("/", handler.Routes())
+
 			req := httptest.NewRequest(tt.method, tt.path, nil)
-			if tt.urlID != "" {
-				req.SetPathValue("id", tt.urlID)
-			}
 			w := httptest.NewRecorder()
-			handler.RestoreHandler(w, req)
+			router.ServeHTTP(w, req)
 			resp := w.Result()
 			defer resp.Body.Close()
 

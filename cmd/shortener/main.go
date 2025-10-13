@@ -1,11 +1,14 @@
 package main
 
 import (
+	"net/http"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+
 	"github.com/dariamoshkina/shortify/internal/handler"
 	"github.com/dariamoshkina/shortify/internal/repository/inmemory"
 	"github.com/dariamoshkina/shortify/internal/service"
-
-	"net/http"
 )
 
 func main() {
@@ -14,12 +17,11 @@ func main() {
 	shortener := service.NewShortenerService(repo, baseURL)
 	urlHandler := handler.NewURLHandler(shortener)
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/{id}", urlHandler.RestoreHandler)
-	mux.HandleFunc("/", urlHandler.ShortenHandler)
+	r := chi.NewRouter()
+	r.Use(middleware.Logger)
+	r.Mount("/", urlHandler.Routes())
 
-	err := http.ListenAndServe(":8080", mux)
-	if err != nil {
+	if err := http.ListenAndServe(":8080", r); err != nil {
 		panic(err)
 	}
 }
