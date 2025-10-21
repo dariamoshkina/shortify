@@ -1,17 +1,15 @@
 package inmemory
 
 import (
-	"errors"
-
 	"github.com/dariamoshkina/shortify/internal/model"
-	"github.com/dariamoshkina/shortify/internal/repository/interfaces"
+	"github.com/dariamoshkina/shortify/internal/service"
 )
 
 type inMemoryURLRepository struct {
 	storage map[string]model.URL
 }
 
-func NewInMemoryURLRepository() interfaces.URLRepository {
+func NewInMemoryURLRepository() service.URLRepository {
 	return &inMemoryURLRepository{
 		storage: make(map[string]model.URL),
 	}
@@ -20,7 +18,7 @@ func NewInMemoryURLRepository() interfaces.URLRepository {
 func (r *inMemoryURLRepository) GetByID(id string) (*model.URL, error) {
 	url, ok := r.storage[id]
 	if !ok {
-		return nil, errors.New("url not found")
+		return nil, service.ErrNotFound
 	}
 	return &url, nil
 }

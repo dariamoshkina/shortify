@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"regexp"
@@ -8,6 +10,8 @@ import (
 	"github.com/dariamoshkina/shortify/internal/service"
 	"github.com/go-chi/chi/v5"
 )
+
+var validPathRegexp = regexp.MustCompile(`^[a-zA-Z0-9]+$`)
 
 type URLHandler struct {
 	service interface {
@@ -30,39 +34,50 @@ func (h *URLHandler) Routes() http.Handler {
 }
 
 func (h *URLHandler) ShortenHandler(res http.ResponseWriter, req *http.Request) {
-	originalURL, _ := io.ReadAll(req.Body)
 	defer req.Body.Close()
+
+	originalURL, err := io.ReadAll(req.Body)
+	if err != nil {
+		http.Error(res, "failed to read request body", http.StatusBadRequest)
+		return
+	}
 
 	shortURL, err := h.service.Shorten(string(originalURL))
 	if err != nil {
-		http.Error(res, "can't shorten", http.StatusInternalServerError)
+		if errors.Is(err, service.ErrInvalidURL) {
+			http.Error(res, "invalid URL", http.StatusBadRequest)
+		} else {
+			http.Error(res, "can't shorten", http.StatusInternalServerError)
+		}
 		return
 	}
 
 	res.Header().Set("content-type", "text/plain")
 	res.WriteHeader(http.StatusCreated)
-	res.Write([]byte(shortURL))
+	_, err = res.Write([]byte(shortURL))
+	if err != nil {
+		fmt.Println("error writing response:", err)
+	}
 }
 
 func (h *URLHandler) RestoreHandler(res http.ResponseWriter, req *http.Request) {
 	urlID := chi.URLParam(req, "id")
 
-	if !pathIsValid(urlID) {
+	if !validPathRegexp.MatchString(urlID) {
 		http.Error(res, "Bad request", http.StatusBadRequest)
 		return
 	}
 
 	originalURL, err := h.service.Restore(urlID)
 	if err != nil {
-		http.NotFound(res, req)
+		if errors.Is(err, service.ErrNotFound) {
+			http.NotFound(res, req)
+		} else {
+			http.Error(res, "internal error", http.StatusInternalServerError)
+		}
 		return
 	}
 
 	res.Header().Set("Location", originalURL)
 	res.WriteHeader(http.StatusTemporaryRedirect)
-}
-
-func pathIsValid(path string) bool {
-	matched, _ := regexp.MatchString(`^[a-zA-Z0-9]+$`, path)
-	return matched
 }

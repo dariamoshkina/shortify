@@ -1,7 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
+	"os"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -16,7 +18,7 @@ func main() {
 	appConfig := config.Parse()
 
 	repo := inmemory.NewInMemoryURLRepository()
-	shortener := service.NewShortenerService(repo, appConfig.BaseURL)
+	shortener := service.NewShortenerService(repo, appConfig.BaseURL, 6)
 	urlHandler := handler.NewURLHandler(shortener)
 
 	r := chi.NewRouter()
@@ -24,6 +26,7 @@ func main() {
 	r.Mount("/", urlHandler.Routes())
 
 	if err := http.ListenAndServe(appConfig.Addr, r); err != nil {
-		panic(err)
+		fmt.Fprintf(os.Stderr, "failed to start server: %v\n", err)
+		os.Exit(1)
 	}
 }

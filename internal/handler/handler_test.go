@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dariamoshkina/shortify/internal/service"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -151,7 +152,7 @@ func TestRestoreHandler(t *testing.T) {
 			method:         http.MethodGet,
 			path:           "/" + shortenedID,
 			urlID:          shortenedID,
-			mockReturnErr:  errors.New("not found"),
+			mockReturnErr:  service.ErrNotFound,
 			expectedStatus: http.StatusNotFound,
 		},
 	}
