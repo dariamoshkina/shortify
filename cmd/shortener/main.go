@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
+	"go.uber.org/zap"
 
 	"github.com/dariamoshkina/shortify/internal/config"
 	"github.com/dariamoshkina/shortify/internal/handler"
@@ -15,6 +15,15 @@ import (
 )
 
 func main() {
+	logger, err := zap.NewDevelopment()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to start logger: %v\n", err)
+		os.Exit(1)
+	}
+	defer logger.Sync()
+
+	sugar := *logger.Sugar()
+
 	appConfig := config.Parse()
 
 	repo := inmemory.NewInMemoryURLRepository()
@@ -22,10 +31,12 @@ func main() {
 	urlHandler := handler.NewURLHandler(shortener)
 
 	r := chi.NewRouter()
-	r.Use(middleware.Logger)
 	r.Mount("/", urlHandler.Routes())
 
-	if err := http.ListenAndServe(appConfig.Addr, r); err != nil {
+	loggerMiddleware := handler.WithLogging(sugar)
+	loggedRouter := loggerMiddleware(r)
+
+	if err := http.ListenAndServe(appConfig.Addr, loggedRouter); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to start server: %v\n", err)
 		os.Exit(1)
 	}
