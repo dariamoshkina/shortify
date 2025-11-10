@@ -10,6 +10,7 @@ import (
 
 	"github.com/dariamoshkina/shortify/internal/config"
 	"github.com/dariamoshkina/shortify/internal/handler"
+	"github.com/dariamoshkina/shortify/internal/logging"
 	"github.com/dariamoshkina/shortify/internal/repository/inmemory"
 	"github.com/dariamoshkina/shortify/internal/service"
 )
@@ -33,7 +34,7 @@ func main() {
 	r := chi.NewRouter()
 	r.Mount("/", urlHandler.Routes())
 
-	loggerMiddleware := handler.WithLogging(sugar)
+	loggerMiddleware := logging.WithLogging(sugar)
 	loggedRouter := loggerMiddleware(r)
 
 	if err := http.ListenAndServe(appConfig.Addr, loggedRouter); err != nil {

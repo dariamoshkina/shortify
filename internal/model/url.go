@@ -1,7 +1,7 @@
 package model
 
 type URL struct {
-	ID        string
-	Original  string
-	Shortened string
+	ID        string `json:"-"`
+	Original  string `json:"url,omitempty"`
+	Shortened string `json:"result,omitempty"`
 }
