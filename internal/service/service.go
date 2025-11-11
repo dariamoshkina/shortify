@@ -60,7 +60,7 @@ func (s *ShortenerService) Shorten(original string) (string, error) {
 	}
 	shortened := fmt.Sprintf("%s/%s", s.baseURL, id)
 
-	if err := s.repo.Store(&model.URL{ID: id, Original: original, Shortened: shortened}); err != nil {
+	if err = s.repo.Store(&model.URL{ID: id, Original: original, Shortened: shortened}); err != nil {
 		return "", err
 	}
 

@@ -5,13 +5,13 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/dariamoshkina/shortify/internal/repository/file"
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 
 	"github.com/dariamoshkina/shortify/internal/config"
 	"github.com/dariamoshkina/shortify/internal/handler"
 	"github.com/dariamoshkina/shortify/internal/middleware"
-	"github.com/dariamoshkina/shortify/internal/repository/inmemory"
 	"github.com/dariamoshkina/shortify/internal/service"
 )
 
@@ -27,7 +27,7 @@ func main() {
 
 	appConfig := config.Parse()
 
-	repo := inmemory.NewInMemoryURLRepository()
+	repo := file.NewFileURLRepository(appConfig.FileStorage)
 	shortener := service.NewShortenerService(repo, appConfig.BaseURL, 6)
 	urlHandler := handler.NewURLHandler(shortener)
 
