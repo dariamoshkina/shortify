@@ -125,7 +125,7 @@ func TestShortenJSONHandler(t *testing.T) {
 		mockResponseURL  string
 		mockReturnErr    error
 		expectedStatus   int
-		expectedJsonBody string
+		expectedJSONBody string
 	}{
 		{
 			name:             "success",
@@ -134,7 +134,7 @@ func TestShortenJSONHandler(t *testing.T) {
 			jsonBody:         requestJSON,
 			mockResponseURL:  responseURL,
 			expectedStatus:   http.StatusCreated,
-			expectedJsonBody: responseJSON,
+			expectedJSONBody: responseJSON,
 		},
 		{
 			name:           "bad method",
@@ -163,7 +163,7 @@ func TestShortenJSONHandler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			handler, mockService := newTestHandler()
-			if tt.expectedJsonBody != "" || tt.mockReturnErr != nil {
+			if tt.expectedJSONBody != "" || tt.mockReturnErr != nil {
 				mockService.On("Shorten", requestURL).Return(responseURL, tt.mockReturnErr)
 			}
 
@@ -177,8 +177,8 @@ func TestShortenJSONHandler(t *testing.T) {
 			assert.Equal(t, tt.expectedStatus, resp.StatusCode)
 
 			body, _ := io.ReadAll(resp.Body)
-			if tt.expectedJsonBody != "" {
-				assert.Equal(t, tt.expectedJsonBody, strings.TrimSpace(string(body)))
+			if tt.expectedJSONBody != "" {
+				assert.Equal(t, tt.expectedJSONBody, strings.TrimSpace(string(body)))
 			}
 		})
 	}
