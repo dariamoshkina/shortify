@@ -1,0 +1,78 @@
+package file
+
+import (
+	"encoding/json"
+	"errors"
+	"io"
+	"os"
+
+	"github.com/dariamoshkina/shortify/internal/model"
+	"github.com/dariamoshkina/shortify/internal/service"
+)
+
+var (
+	errOpenFile  = errors.New("can't open file")
+	errReadFile  = errors.New("can't read file")
+	errWriteFile = errors.New("can't write file")
+)
+
+type fileURLRepository struct {
+	filename string
+}
+
+func NewFileURLRepository(filename string) service.URLRepository {
+	return &fileURLRepository{
+		filename: filename,
+	}
+}
+
+func (f fileURLRepository) GetByID(id string) (*model.URL, error) {
+	file, err := os.OpenFile(f.filename, os.O_RDONLY|os.O_CREATE, 0644)
+	if err != nil {
+		return nil, errOpenFile
+	}
+	defer file.Close()
+
+	var urls []model.URL
+	dec := json.NewDecoder(file)
+	if err = dec.Decode(&urls); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil, service.ErrNotFound
+		}
+		return nil, errReadFile
+	}
+
+	for _, url := range urls {
+		if url.ID == id {
+			return &url, nil
+		}
+	}
+	return nil, service.ErrNotFound
+}
+
+func (f fileURLRepository) Store(url *model.URL) error {
+	file, err := os.OpenFile(f.filename, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return errOpenFile
+	}
+	defer file.Close()
+
+	var urls []model.URL
+	dec := json.NewDecoder(file)
+	if err = dec.Decode(&urls); err != nil {
+		if !errors.Is(err, io.EOF) {
+			return errReadFile
+		}
+	}
+	if _, err = file.Seek(0, 0); err != nil {
+		return errWriteFile
+	}
+
+	urls = append(urls, *url)
+	enc := json.NewEncoder(file)
+	if err = enc.Encode(urls); err != nil {
+		return errWriteFile
+	}
+
+	return nil
+}

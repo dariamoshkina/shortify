@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -28,10 +29,12 @@ func (m *MockShortenerService) Restore(id string) (string, error) {
 	return args.String(0), args.Error(1)
 }
 
-const (
-	originalURL  = "https://example.com"
+var (
+	requestURL   = "https://example.com"
 	shortenedID  = "abc123"
-	shortenedURL = "http://localhost:8080/abc123"
+	responseURL  = "http://localhost:8080/abc123"
+	requestJSON  = fmt.Sprintf(`{"url":"%s"}`, requestURL)
+	responseJSON = fmt.Sprintf(`{"result":"%s"}`, responseURL)
 )
 
 func newTestHandler() (*URLHandler, *MockShortenerService) {
@@ -53,7 +56,6 @@ func TestShortenHandler(t *testing.T) {
 		method         string
 		path           string
 		body           string
-		mockReturnURL  string
 		mockReturnErr  error
 		expectedStatus int
 		expectedBody   string
@@ -62,30 +64,29 @@ func TestShortenHandler(t *testing.T) {
 			name:           "success",
 			method:         http.MethodPost,
 			path:           "/",
-			body:           originalURL,
-			mockReturnURL:  shortenedURL,
+			body:           requestURL,
 			expectedStatus: http.StatusCreated,
-			expectedBody:   shortenedURL,
+			expectedBody:   responseURL,
 		},
 		{
 			name:           "bad method",
 			method:         http.MethodGet,
 			path:           "/",
-			body:           originalURL,
+			body:           requestURL,
 			expectedStatus: http.StatusMethodNotAllowed,
 		},
 		{
 			name:           "bad path",
 			method:         http.MethodPost,
 			path:           "/shorten",
-			body:           originalURL,
+			body:           requestURL,
 			expectedStatus: http.StatusMethodNotAllowed,
 		},
 		{
 			name:           "service error",
 			method:         http.MethodPost,
 			path:           "/",
-			body:           originalURL,
+			body:           requestURL,
 			mockReturnErr:  errors.New("boom"),
 			expectedStatus: http.StatusInternalServerError,
 		},
@@ -94,8 +95,8 @@ func TestShortenHandler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			handler, mockService := newTestHandler()
-			if tt.mockReturnURL != "" || tt.mockReturnErr != nil {
-				mockService.On("Shorten", originalURL).Return(tt.mockReturnURL, tt.mockReturnErr)
+			if tt.expectedBody != "" || tt.mockReturnErr != nil {
+				mockService.On("Shorten", tt.body).Return(tt.expectedBody, tt.mockReturnErr)
 			}
 
 			router := chi.NewRouter()
@@ -110,6 +111,74 @@ func TestShortenHandler(t *testing.T) {
 			body, _ := io.ReadAll(resp.Body)
 			if tt.expectedBody != "" {
 				assert.Equal(t, tt.expectedBody, string(body))
+			}
+		})
+	}
+}
+
+func TestShortenJSONHandler(t *testing.T) {
+	tests := []struct {
+		name             string
+		method           string
+		path             string
+		jsonBody         string
+		mockResponseURL  string
+		mockReturnErr    error
+		expectedStatus   int
+		expectedJSONBody string
+	}{
+		{
+			name:             "success",
+			method:           http.MethodPost,
+			path:             "/api/shorten",
+			jsonBody:         requestJSON,
+			mockResponseURL:  responseURL,
+			expectedStatus:   http.StatusCreated,
+			expectedJSONBody: responseJSON,
+		},
+		{
+			name:           "bad method",
+			method:         http.MethodGet,
+			path:           "/api/shorten",
+			jsonBody:       requestJSON,
+			expectedStatus: http.StatusMethodNotAllowed,
+		},
+		{
+			name:           "bad path",
+			method:         http.MethodPost,
+			path:           "/shorten",
+			jsonBody:       requestJSON,
+			expectedStatus: http.StatusMethodNotAllowed,
+		},
+		{
+			name:           "service error",
+			method:         http.MethodPost,
+			path:           "/api/shorten",
+			jsonBody:       requestJSON,
+			mockReturnErr:  errors.New("boom"),
+			expectedStatus: http.StatusInternalServerError,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler, mockService := newTestHandler()
+			if tt.expectedJSONBody != "" || tt.mockReturnErr != nil {
+				mockService.On("Shorten", requestURL).Return(responseURL, tt.mockReturnErr)
+			}
+
+			router := chi.NewRouter()
+			router.Mount("/", handler.Routes())
+
+			w := doRequest(router, tt.method, tt.path, tt.jsonBody)
+			resp := w.Result()
+			defer resp.Body.Close()
+
+			assert.Equal(t, tt.expectedStatus, resp.StatusCode)
+
+			body, _ := io.ReadAll(resp.Body)
+			if tt.expectedJSONBody != "" {
+				assert.Equal(t, tt.expectedJSONBody, strings.TrimSpace(string(body)))
 			}
 		})
 	}
@@ -131,9 +200,9 @@ func TestRestoreHandler(t *testing.T) {
 			method:         http.MethodGet,
 			path:           "/" + shortenedID,
 			urlID:          shortenedID,
-			mockReturnURL:  originalURL,
+			mockReturnURL:  requestURL,
 			expectedStatus: http.StatusTemporaryRedirect,
-			expectedHeader: originalURL,
+			expectedHeader: requestURL,
 		},
 		{
 			name:           "bad method",
