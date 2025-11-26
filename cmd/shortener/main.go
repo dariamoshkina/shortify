@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -30,9 +31,11 @@ func main() {
 	repo := file.NewFileURLRepository(appConfig.FileStorage)
 	shortener := service.NewShortenerService(repo, appConfig.BaseURL, 6)
 	urlHandler := handler.NewURLHandler(shortener)
+	dbHandler := handler.NewDBHandler(context.Background(), appConfig.DatabaseDSN)
 
 	r := chi.NewRouter()
 	r.Mount("/", urlHandler.Routes())
+	r.Mount("/ping", dbHandler.Routes())
 
 	loggerMiddleware := middleware.WithLogging(sugar)
 	loggedRouter := loggerMiddleware(r)
