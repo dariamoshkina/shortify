@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dariamoshkina/shortify/internal/model"
 	"github.com/dariamoshkina/shortify/internal/service"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
@@ -27,6 +28,11 @@ func (m *MockShortenerService) Shorten(original string) (string, error) {
 func (m *MockShortenerService) Restore(id string) (string, error) {
 	args := m.Called(id)
 	return args.String(0), args.Error(1)
+}
+
+func (m *MockShortenerService) ShortenMany(urls []*model.BatchURL) ([]*model.BatchURL, error) {
+	args := m.Called(urls)
+	return args.Get(0).([]*model.BatchURL), args.Error(1)
 }
 
 var (

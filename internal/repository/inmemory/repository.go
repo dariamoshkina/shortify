@@ -27,3 +27,10 @@ func (r *inMemoryRepository) Store(url *model.URL) error {
 	r.storage[url.ID] = *url
 	return nil
 }
+
+func (r *inMemoryRepository) StoreMany(urls []*model.URL) error {
+	for _, url := range urls {
+		r.storage[url.ID] = *url
+	}
+	return nil
+}

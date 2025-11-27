@@ -76,3 +76,32 @@ func (f fileRepository) Store(url *model.URL) error {
 
 	return nil
 }
+
+func (f fileRepository) StoreMany(urls []*model.URL) error {
+	file, err := os.OpenFile(f.filename, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return errOpenFile
+	}
+	defer file.Close()
+
+	var existingURLs []model.URL
+	dec := json.NewDecoder(file)
+	if err = dec.Decode(&existingURLs); err != nil {
+		if !errors.Is(err, io.EOF) {
+			return errReadFile
+		}
+	}
+	if _, err = file.Seek(0, 0); err != nil {
+		return errWriteFile
+	}
+
+	for _, url := range urls {
+		existingURLs = append(existingURLs, model.URL{ID: url.ID, Original: url.Original, Shortened: url.Shortened})
+	}
+	enc := json.NewEncoder(file)
+	if err = enc.Encode(urls); err != nil {
+		return errWriteFile
+	}
+
+	return nil
+}

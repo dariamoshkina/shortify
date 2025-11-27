@@ -66,3 +66,25 @@ func (r *postgresRepository) Store(url *model.URL) error {
 	}
 	return nil
 }
+
+func (r *postgresRepository) StoreMany(urls []*model.URL) error {
+	ctx := context.Background()
+	tx, err := r.conn.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	_, err = tx.Prepare(ctx, "batch_store", "INSERT INTO urls (original, short, short_path) VALUES($1, $2, $3);")
+	if err != nil {
+		return err
+	}
+
+	for _, url := range urls {
+		if _, err = r.conn.Exec(ctx, "batch_store", url.Original, url.Shortened, url.ID); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit(ctx)
+}
