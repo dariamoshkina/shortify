@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,9 +18,9 @@ var validPathRegexp = regexp.MustCompile(`^[a-zA-Z0-9]+$`)
 
 type URLHandler struct {
 	service interface {
-		Shorten(string) (string, error)
-		ShortenMany([]*model.BatchURL) ([]*model.BatchURL, error)
-		Restore(string) (string, error)
+		Shorten(context.Context, string) (string, error)
+		ShortenMany(context.Context, []model.BatchURL) ([]*model.BatchURL, error)
+		Restore(context.Context, string) (string, error)
 	}
 }
 
@@ -47,18 +48,23 @@ func (h *URLHandler) ShortenHandler(res http.ResponseWriter, req *http.Request) 
 		return
 	}
 
-	shortURL, err := h.service.Shorten(string(originalURL))
+	resStatus := http.StatusCreated
+	shortURL, err := h.service.Shorten(req.Context(), string(originalURL))
 	if err != nil {
-		if errors.Is(err, service.ErrInvalidURL) {
+		switch {
+		case errors.Is(err, service.ErrInvalidURL):
 			http.Error(res, "invalid URL", http.StatusBadRequest)
-		} else {
+			return
+		case errors.Is(err, service.ErrDuplicate):
+			resStatus = http.StatusConflict
+		default:
 			http.Error(res, "can't shorten", http.StatusInternalServerError)
+			return
 		}
-		return
 	}
 
 	res.Header().Set("content-type", "text/plain")
-	res.WriteHeader(http.StatusCreated)
+	res.WriteHeader(resStatus)
 	_, err = res.Write([]byte(shortURL))
 	if err != nil {
 		fmt.Println("error writing response:", err)
@@ -75,18 +81,23 @@ func (h *URLHandler) ShortenJSONHandler(res http.ResponseWriter, req *http.Reque
 		return
 	}
 
-	shortURL, err := h.service.Shorten(reqBody.Original)
+	resStatus := http.StatusCreated
+	shortURL, err := h.service.Shorten(req.Context(), reqBody.Original)
 	if err != nil {
-		if errors.Is(err, service.ErrInvalidURL) {
+		switch {
+		case errors.Is(err, service.ErrInvalidURL):
 			http.Error(res, "invalid URL", http.StatusBadRequest)
-		} else {
+			return
+		case errors.Is(err, service.ErrDuplicate):
+			resStatus = http.StatusConflict
+		default:
 			http.Error(res, "can't shorten", http.StatusInternalServerError)
+			return
 		}
-		return
 	}
 
 	res.Header().Set("content-type", "application/json")
-	res.WriteHeader(http.StatusCreated)
+	res.WriteHeader(resStatus)
 
 	respBody.Shortened = shortURL
 	enc := json.NewEncoder(res)
@@ -99,14 +110,14 @@ func (h *URLHandler) ShortenJSONHandler(res http.ResponseWriter, req *http.Reque
 func (h *URLHandler) ShortenBatchHandler(res http.ResponseWriter, req *http.Request) {
 	defer req.Body.Close()
 
-	var reqBody, respBody []*model.BatchURL
+	var reqBody []model.BatchURL
 	dec := json.NewDecoder(req.Body)
 	if err := dec.Decode(&reqBody); err != nil {
 		http.Error(res, "invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	respBody, err := h.service.ShortenMany(reqBody)
+	respBody, err := h.service.ShortenMany(req.Context(), reqBody)
 	if err != nil {
 		if errors.Is(err, service.ErrInvalidURL) {
 			http.Error(res, "invalid URL", http.StatusBadRequest)
@@ -134,7 +145,7 @@ func (h *URLHandler) RestoreHandler(res http.ResponseWriter, req *http.Request) 
 		return
 	}
 
-	originalURL, err := h.service.Restore(urlID)
+	originalURL, err := h.service.Restore(req.Context(), urlID)
 	if err != nil {
 		if errors.Is(err, service.ErrNotFound) {
 			http.NotFound(res, req)

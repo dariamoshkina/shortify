@@ -1,6 +1,8 @@
 package inmemory
 
 import (
+	"context"
+
 	"github.com/dariamoshkina/shortify/internal/model"
 	"github.com/dariamoshkina/shortify/internal/service"
 )
@@ -15,7 +17,7 @@ func NewInMemoryRepository() service.URLRepository {
 	}
 }
 
-func (r *inMemoryRepository) GetByID(id string) (*model.URL, error) {
+func (r *inMemoryRepository) GetByID(ctx context.Context, id string) (*model.URL, error) {
 	url, ok := r.storage[id]
 	if !ok {
 		return nil, service.ErrNotFound
@@ -23,14 +25,20 @@ func (r *inMemoryRepository) GetByID(id string) (*model.URL, error) {
 	return &url, nil
 }
 
-func (r *inMemoryRepository) Store(url *model.URL) error {
-	r.storage[url.ID] = *url
-	return nil
+func (r *inMemoryRepository) Store(ctx context.Context, url model.URL) (*model.URL, error) {
+	for _, storedURL := range r.storage {
+		if storedURL.Original == url.Original {
+			return &storedURL, nil
+		}
+	}
+
+	r.storage[url.ID] = url
+	return nil, nil
 }
 
-func (r *inMemoryRepository) StoreMany(urls []*model.URL) error {
+func (r *inMemoryRepository) StoreMany(ctx context.Context, urls []model.URL) error {
 	for _, url := range urls {
-		r.storage[url.ID] = *url
+		r.storage[url.ID] = url
 	}
 	return nil
 }

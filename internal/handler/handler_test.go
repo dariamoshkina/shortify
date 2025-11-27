@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -20,17 +21,17 @@ type MockShortenerService struct {
 	mock.Mock
 }
 
-func (m *MockShortenerService) Shorten(original string) (string, error) {
+func (m *MockShortenerService) Shorten(ctx context.Context, original string) (string, error) {
 	args := m.Called(original)
 	return args.String(0), args.Error(1)
 }
 
-func (m *MockShortenerService) Restore(id string) (string, error) {
+func (m *MockShortenerService) Restore(ctx context.Context, id string) (string, error) {
 	args := m.Called(id)
 	return args.String(0), args.Error(1)
 }
 
-func (m *MockShortenerService) ShortenMany(urls []*model.BatchURL) ([]*model.BatchURL, error) {
+func (m *MockShortenerService) ShortenMany(ctx context.Context, urls []model.BatchURL) ([]*model.BatchURL, error) {
 	args := m.Called(urls)
 	return args.Get(0).([]*model.BatchURL), args.Error(1)
 }

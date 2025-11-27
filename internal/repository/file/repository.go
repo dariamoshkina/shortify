@@ -1,6 +1,7 @@
 package file
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -26,7 +27,7 @@ func NewFileRepository(filename string) service.URLRepository {
 	}
 }
 
-func (f fileRepository) GetByID(id string) (*model.URL, error) {
+func (f fileRepository) GetByID(ctx context.Context, id string) (*model.URL, error) {
 	file, err := os.OpenFile(f.filename, os.O_RDONLY|os.O_CREATE, 0644)
 	if err != nil {
 		return nil, errOpenFile
@@ -50,10 +51,10 @@ func (f fileRepository) GetByID(id string) (*model.URL, error) {
 	return nil, service.ErrNotFound
 }
 
-func (f fileRepository) Store(url *model.URL) error {
+func (f fileRepository) Store(ctx context.Context, url model.URL) (*model.URL, error) {
 	file, err := os.OpenFile(f.filename, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
-		return errOpenFile
+		return nil, errOpenFile
 	}
 	defer file.Close()
 
@@ -61,23 +62,30 @@ func (f fileRepository) Store(url *model.URL) error {
 	dec := json.NewDecoder(file)
 	if err = dec.Decode(&urls); err != nil {
 		if !errors.Is(err, io.EOF) {
-			return errReadFile
+			return nil, errReadFile
 		}
 	}
-	if _, err = file.Seek(0, 0); err != nil {
-		return errWriteFile
+
+	for _, storedURL := range urls {
+		if storedURL.Original == url.Original {
+			return &storedURL, nil
+		}
 	}
 
-	urls = append(urls, *url)
+	if _, err = file.Seek(0, 0); err != nil {
+		return nil, errWriteFile
+	}
+
+	urls = append(urls, url)
 	enc := json.NewEncoder(file)
 	if err = enc.Encode(urls); err != nil {
-		return errWriteFile
+		return nil, errWriteFile
 	}
 
-	return nil
+	return nil, nil
 }
 
-func (f fileRepository) StoreMany(urls []*model.URL) error {
+func (f fileRepository) StoreMany(ctx context.Context, urls []model.URL) error {
 	file, err := os.OpenFile(f.filename, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return errOpenFile

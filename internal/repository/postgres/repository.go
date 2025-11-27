@@ -3,7 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
-	"log"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -20,29 +20,34 @@ type postgresRepository struct {
 	conn *pgx.Conn
 }
 
-func NewPostgresRepository(connString string) service.URLRepository {
-	wd, _ := os.Getwd()
+func NewPostgresRepository(connString string) (service.URLRepository, error) {
+	wd, err := os.Getwd()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get working dir: %w", err)
+	}
 	migrationsPath := "file://" + filepath.Join(wd, "migrations")
 
-	m, err := migrate.New(
-		migrationsPath,
-		connString,
-	)
+	m, err := migrate.New(migrationsPath, connString)
 	if err != nil {
-		log.Fatalf("failed to create migrate instance: %v", err)
+		return nil, fmt.Errorf("failed to create migrator: %w", err)
 	}
-	err = m.Up()
-	if err != nil && err != migrate.ErrNoChange {
-		log.Fatalf("failed to apply migrations: %v", err)
+	if err = m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		return nil, fmt.Errorf("failed to apply migrations: %w", err)
+	}
+	if srcErr, dbErr := m.Close(); srcErr != nil || dbErr != nil {
+		return nil, fmt.Errorf("failed to close migrator: %w", err)
 	}
 
-	conn, _ := pgx.Connect(context.Background(), connString)
+	conn, err := pgx.Connect(context.Background(), connString)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to db: %w", err)
+	}
 
-	return &postgresRepository{conn: conn}
+	return &postgresRepository{conn: conn}, nil
 }
 
-func (r *postgresRepository) GetByID(id string) (*model.URL, error) {
-	row := r.conn.QueryRow(context.Background(), "SELECT original, short FROM urls WHERE short_path = $1", id)
+func (r *postgresRepository) GetByID(ctx context.Context, id string) (*model.URL, error) {
+	row := r.conn.QueryRow(ctx, "SELECT original, short FROM urls WHERE short_path = $1", id)
 
 	var url model.URL
 	err := row.Scan(&url.Original, &url.Shortened)
@@ -56,19 +61,37 @@ func (r *postgresRepository) GetByID(id string) (*model.URL, error) {
 	return &url, nil
 }
 
-func (r *postgresRepository) Store(url *model.URL) error {
-	_, err := r.conn.Exec(
-		context.Background(),
-		"INSERT INTO urls (original, short, short_path) VALUES ($1, $2, $3)", url.Original, url.Shortened, url.ID,
-	)
+func (r *postgresRepository) Store(ctx context.Context, url model.URL) (*model.URL, error) {
+	var res model.URL
+
+	err := r.conn.QueryRow(ctx,
+		`INSERT INTO urls (original, short, short_path)
+		 VALUES ($1, $2, $3)
+		 ON CONFLICT (original) DO NOTHING
+		 RETURNING original, short, short_path`,
+		url.Original, url.Shortened, url.ID,
+	).Scan(&res.Original, &res.Shortened, &res.ID)
+
 	if err != nil {
-		return err
+		if errors.Is(err, pgx.ErrNoRows) {
+			err = r.conn.QueryRow(ctx,
+				`SELECT original, short, short_path
+				 FROM urls
+				 WHERE original = $1`,
+				url.Original,
+			).Scan(&res.Original, &res.Shortened, &res.ID)
+			if err != nil {
+				return nil, err
+			}
+			return &res, nil
+		}
+		return nil, err
 	}
-	return nil
+
+	return nil, nil
 }
 
-func (r *postgresRepository) StoreMany(urls []*model.URL) error {
-	ctx := context.Background()
+func (r *postgresRepository) StoreMany(ctx context.Context, urls []model.URL) error {
 	tx, err := r.conn.Begin(ctx)
 	if err != nil {
 		return err
@@ -81,7 +104,7 @@ func (r *postgresRepository) StoreMany(urls []*model.URL) error {
 	}
 
 	for _, url := range urls {
-		if _, err = r.conn.Exec(ctx, "batch_store", url.Original, url.Shortened, url.ID); err != nil {
+		if _, err = tx.Exec(ctx, "batch_store", url.Original, url.Shortened, url.ID); err != nil {
 			return err
 		}
 	}

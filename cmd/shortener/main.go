@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -33,7 +32,11 @@ func main() {
 	var repo service.URLRepository
 	switch {
 	case appConfig.DatabaseDSN != "":
-		repo = postgres.NewPostgresRepository(appConfig.DatabaseDSN)
+		repo, err = postgres.NewPostgresRepository(appConfig.DatabaseDSN)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to start PG repo: %v\n", err)
+			os.Exit(1)
+		}
 	case appConfig.FileStorage != "":
 		repo = file.NewFileRepository(appConfig.FileStorage)
 	default:
@@ -42,7 +45,7 @@ func main() {
 
 	shortener := service.NewShortenerService(repo, appConfig.BaseURL, 6)
 	urlHandler := handler.NewURLHandler(shortener)
-	dbHandler := handler.NewDBHandler(context.Background(), appConfig.DatabaseDSN)
+	dbHandler := handler.NewDBHandler(appConfig.DatabaseDSN)
 
 	r := chi.NewRouter()
 	r.Mount("/", urlHandler.Routes())
@@ -52,7 +55,7 @@ func main() {
 	loggedRouter := loggerMiddleware(r)
 	compressedRouter := middleware.WithCompress(loggedRouter)
 
-	if err := http.ListenAndServe(appConfig.Addr, compressedRouter); err != nil {
+	if err = http.ListenAndServe(appConfig.Addr, compressedRouter); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to start server: %v\n", err)
 		os.Exit(1)
 	}
