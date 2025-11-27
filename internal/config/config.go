@@ -12,7 +12,6 @@ const (
 	DefaultServerAddress = "localhost:8080"
 	DefaultBaseURL       = "http://localhost:8080"
 	DefaultFilename      = "urls.json"
-	DefaultDatabaseDSN   = "postgresql://postgres@localhost:5432/shortify?sslmode=disable"
 )
 
 type Config struct {
@@ -35,7 +34,7 @@ func Parse() *Config {
 	addr = flag.String("a", DefaultServerAddress, "host URL")
 	baseURL = flag.String("b", DefaultBaseURL, "base URL")
 	fileStorage = flag.String("f", DefaultFilename, "file storage path")
-	databaseDSN = flag.String("d", DefaultDatabaseDSN, "database DSN")
+	databaseDSN = flag.String("d", "", "database DSN")
 	flag.Parse()
 
 	config.Addr, _ = lo.Coalesce(config.Addr, *addr)

@@ -3,10 +3,17 @@ package postgres
 import (
 	"context"
 	"errors"
+	"log"
+	"os"
+	"path/filepath"
 
 	"github.com/dariamoshkina/shortify/internal/model"
 	"github.com/dariamoshkina/shortify/internal/service"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/golang-migrate/migrate"
+	_ "github.com/golang-migrate/migrate/database/postgres"
+	_ "github.com/golang-migrate/migrate/source/file"
 )
 
 type postgresRepository struct {
@@ -14,7 +21,23 @@ type postgresRepository struct {
 }
 
 func NewPostgresRepository(connString string) service.URLRepository {
+	wd, _ := os.Getwd()
+	migrationsPath := "file://" + filepath.Join(wd, "migrations")
+
+	m, err := migrate.New(
+		migrationsPath,
+		connString,
+	)
+	if err != nil {
+		log.Fatalf("failed to create migrate instance: %v", err)
+	}
+	err = m.Up()
+	if err != nil && err != migrate.ErrNoChange {
+		log.Fatalf("failed to apply migrations: %v", err)
+	}
+
 	conn, _ := pgx.Connect(context.Background(), connString)
+
 	return &postgresRepository{conn: conn}
 }
 
@@ -29,7 +52,7 @@ func (r *postgresRepository) GetByID(id string) (*model.URL, error) {
 		}
 		return nil, err
 	}
-	
+
 	return &url, nil
 }
 
