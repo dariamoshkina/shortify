@@ -26,10 +26,13 @@ func (h *DBHandler) Routes() http.Handler {
 }
 
 func (h *DBHandler) PingHandler(res http.ResponseWriter, req *http.Request) {
-	if _, err := pgx.Connect(h.ctx, h.dbConnString); err != nil {
+	database, err := pgx.Connect(h.ctx, h.dbConnString)
+
+	if err != nil {
 		http.Error(res, "failed to connect to database", http.StatusInternalServerError)
 		return
 	}
+	defer database.Close(h.ctx)
 
 	res.WriteHeader(http.StatusOK)
 }

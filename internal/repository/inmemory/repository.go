@@ -5,17 +5,17 @@ import (
 	"github.com/dariamoshkina/shortify/internal/service"
 )
 
-type inMemoryURLRepository struct {
+type inMemoryRepository struct {
 	storage map[string]model.URL
 }
 
-func NewInMemoryURLRepository() service.URLRepository {
-	return &inMemoryURLRepository{
+func NewInMemoryRepository() service.URLRepository {
+	return &inMemoryRepository{
 		storage: make(map[string]model.URL),
 	}
 }
 
-func (r *inMemoryURLRepository) GetByID(id string) (*model.URL, error) {
+func (r *inMemoryRepository) GetByID(id string) (*model.URL, error) {
 	url, ok := r.storage[id]
 	if !ok {
 		return nil, service.ErrNotFound
@@ -23,7 +23,7 @@ func (r *inMemoryURLRepository) GetByID(id string) (*model.URL, error) {
 	return &url, nil
 }
 
-func (r *inMemoryURLRepository) Store(url *model.URL) error {
+func (r *inMemoryRepository) Store(url *model.URL) error {
 	r.storage[url.ID] = *url
 	return nil
 }

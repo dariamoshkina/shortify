@@ -7,6 +7,8 @@ import (
 	"os"
 
 	"github.com/dariamoshkina/shortify/internal/repository/file"
+	"github.com/dariamoshkina/shortify/internal/repository/inmemory"
+	"github.com/dariamoshkina/shortify/internal/repository/postgres"
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 
@@ -28,7 +30,16 @@ func main() {
 
 	appConfig := config.Parse()
 
-	repo := file.NewFileURLRepository(appConfig.FileStorage)
+	var repo service.URLRepository
+	switch {
+	case appConfig.DatabaseDSN != "":
+		repo = postgres.NewPostgresRepository(appConfig.DatabaseDSN)
+	case appConfig.FileStorage != "":
+		repo = file.NewFileRepository(appConfig.FileStorage)
+	default:
+		repo = inmemory.NewInMemoryRepository()
+	}
+
 	shortener := service.NewShortenerService(repo, appConfig.BaseURL, 6)
 	urlHandler := handler.NewURLHandler(shortener)
 	dbHandler := handler.NewDBHandler(context.Background(), appConfig.DatabaseDSN)

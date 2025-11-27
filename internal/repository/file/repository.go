@@ -16,17 +16,17 @@ var (
 	errWriteFile = errors.New("can't write file")
 )
 
-type fileURLRepository struct {
+type fileRepository struct {
 	filename string
 }
 
-func NewFileURLRepository(filename string) service.URLRepository {
-	return &fileURLRepository{
+func NewFileRepository(filename string) service.URLRepository {
+	return &fileRepository{
 		filename: filename,
 	}
 }
 
-func (f fileURLRepository) GetByID(id string) (*model.URL, error) {
+func (f fileRepository) GetByID(id string) (*model.URL, error) {
 	file, err := os.OpenFile(f.filename, os.O_RDONLY|os.O_CREATE, 0644)
 	if err != nil {
 		return nil, errOpenFile
@@ -50,7 +50,7 @@ func (f fileURLRepository) GetByID(id string) (*model.URL, error) {
 	return nil, service.ErrNotFound
 }
 
-func (f fileURLRepository) Store(url *model.URL) error {
+func (f fileRepository) Store(url *model.URL) error {
 	file, err := os.OpenFile(f.filename, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return errOpenFile

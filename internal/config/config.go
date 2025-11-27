@@ -12,7 +12,7 @@ const (
 	DefaultServerAddress = "localhost:8080"
 	DefaultBaseURL       = "http://localhost:8080"
 	DefaultFilename      = "urls.json"
-	DefaultDatabaseDSN   = "postgresql://postgres:postgres@localhost:5432/shortify"
+	DefaultDatabaseDSN   = "postgresql://postgres@localhost:5432/shortify?sslmode=disable"
 )
 
 type Config struct {
