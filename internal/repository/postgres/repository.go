@@ -9,45 +9,44 @@ import (
 
 	"github.com/dariamoshkina/shortify/internal/model"
 	"github.com/dariamoshkina/shortify/internal/service"
+	"github.com/golang-migrate/migrate/v4"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jackc/pgx/v5"
-
-	"github.com/golang-migrate/migrate"
-	_ "github.com/golang-migrate/migrate/database/postgres"
-	_ "github.com/golang-migrate/migrate/source/file"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type postgresRepository struct {
-	conn *pgx.Conn
+	pool *pgxpool.Pool
 }
 
-func NewPostgresRepository(connString string) (service.URLRepository, error) {
+func NewPostgresRepository(pool *pgxpool.Pool) service.URLRepository {
+	return &postgresRepository{pool: pool}
+}
+
+func RunMigrations(connString string) error {
 	wd, err := os.Getwd()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get working dir: %w", err)
+		return fmt.Errorf("failed to get working dir: %w", err)
 	}
 	migrationsPath := "file://" + filepath.Join(wd, "migrations")
 
 	m, err := migrate.New(migrationsPath, connString)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create migrator: %w", err)
+		return fmt.Errorf("failed to create migrator: %w", err)
 	}
 	if err = m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
-		return nil, fmt.Errorf("failed to apply migrations: %w", err)
+		return fmt.Errorf("failed to apply migrations: %w", err)
 	}
 	if srcErr, dbErr := m.Close(); srcErr != nil || dbErr != nil {
-		return nil, fmt.Errorf("failed to close migrator: %w", err)
+		return fmt.Errorf("failed to close migrator: %w", err)
 	}
 
-	conn, err := pgx.Connect(context.Background(), connString)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to db: %w", err)
-	}
-
-	return &postgresRepository{conn: conn}, nil
+	return nil
 }
 
 func (r *postgresRepository) GetByID(ctx context.Context, id string) (*model.URL, error) {
-	row := r.conn.QueryRow(ctx, "SELECT original, short FROM urls WHERE short_path = $1", id)
+	row := r.pool.QueryRow(ctx, "SELECT original, short FROM urls WHERE short_path = $1", id)
 
 	var url model.URL
 	err := row.Scan(&url.Original, &url.Shortened)
@@ -64,7 +63,7 @@ func (r *postgresRepository) GetByID(ctx context.Context, id string) (*model.URL
 func (r *postgresRepository) Store(ctx context.Context, url model.URL) (*model.URL, error) {
 	var res model.URL
 
-	err := r.conn.QueryRow(ctx,
+	err := r.pool.QueryRow(ctx,
 		`INSERT INTO urls (original, short, short_path)
 		 VALUES ($1, $2, $3)
 		 ON CONFLICT (original) DO NOTHING
@@ -74,7 +73,7 @@ func (r *postgresRepository) Store(ctx context.Context, url model.URL) (*model.U
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			err = r.conn.QueryRow(ctx,
+			err = r.pool.QueryRow(ctx,
 				`SELECT original, short, short_path
 				 FROM urls
 				 WHERE original = $1`,
@@ -92,22 +91,23 @@ func (r *postgresRepository) Store(ctx context.Context, url model.URL) (*model.U
 }
 
 func (r *postgresRepository) StoreMany(ctx context.Context, urls []model.URL) error {
-	tx, err := r.conn.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-
-	_, err = tx.Prepare(ctx, "batch_store", "INSERT INTO urls (original, short, short_path) VALUES($1, $2, $3);")
-	if err != nil {
-		return err
+	batch := &pgx.Batch{}
+	for _, u := range urls {
+		batch.Queue(
+			`INSERT INTO urls (original, short, short_path)
+             VALUES ($1, $2, $3);`,
+			u.Original, u.Shortened, u.ID,
+		)
 	}
 
-	for _, url := range urls {
-		if _, err = tx.Exec(ctx, "batch_store", url.Original, url.Shortened, url.ID); err != nil {
+	br := r.pool.SendBatch(ctx, batch)
+	defer br.Close()
+
+	for range urls {
+		if _, err := br.Exec(); err != nil {
 			return err
 		}
 	}
 
-	return tx.Commit(ctx)
+	return nil
 }

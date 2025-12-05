@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"github.com/dariamoshkina/shortify/internal/repository/inmemory"
 	"github.com/dariamoshkina/shortify/internal/repository/postgres"
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
 
 	"github.com/dariamoshkina/shortify/internal/config"
@@ -25,18 +27,32 @@ func main() {
 	}
 	defer logger.Sync()
 
-	sugar := *logger.Sugar()
-
+	sugar := logger.Sugar()
+	r := chi.NewRouter()
 	appConfig := config.Parse()
 
-	var repo service.URLRepository
+	var (
+		repo service.URLRepository
+		pool *pgxpool.Pool
+	)
 	switch {
 	case appConfig.DatabaseDSN != "":
-		repo, err = postgres.NewPostgresRepository(appConfig.DatabaseDSN)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to start PG repo: %v\n", err)
+		if err = postgres.RunMigrations(appConfig.DatabaseDSN); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to run migrations: %v\n", err)
 			os.Exit(1)
 		}
+
+		pool, err = pgxpool.New(context.Background(), appConfig.DatabaseDSN)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to create pgx pool: %v\n", err)
+			os.Exit(1)
+		}
+		defer pool.Close()
+
+		repo = postgres.NewPostgresRepository(pool)
+
+		dbHandler := handler.NewDBPinger(pool, sugar)
+		r.Get("/ping", dbHandler.PingHandler)
 	case appConfig.FileStorage != "":
 		repo = file.NewFileRepository(appConfig.FileStorage)
 	default:
@@ -44,12 +60,12 @@ func main() {
 	}
 
 	shortener := service.NewShortenerService(repo, appConfig.BaseURL, 6)
-	urlHandler := handler.NewURLHandler(shortener)
-	dbHandler := handler.NewDBHandler(appConfig.DatabaseDSN)
+	urlHandler := handler.NewURLHandler(shortener, sugar)
 
-	r := chi.NewRouter()
-	r.Mount("/", urlHandler.Routes())
-	r.Mount("/ping", dbHandler.Routes())
+	r.Post("/", urlHandler.ShortenHandler)
+	r.Post("/api/shorten", urlHandler.ShortenJSONHandler)
+	r.Post("/api/shorten/batch", urlHandler.ShortenBatchHandler)
+	r.Get("/{id}", urlHandler.RestoreHandler)
 
 	loggerMiddleware := middleware.WithLogging(sugar)
 	loggedRouter := loggerMiddleware(r)

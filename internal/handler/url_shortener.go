@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"regexp"
@@ -12,31 +11,25 @@ import (
 	"github.com/dariamoshkina/shortify/internal/model"
 	"github.com/dariamoshkina/shortify/internal/service"
 	"github.com/go-chi/chi/v5"
+	"go.uber.org/zap"
 )
 
 var validPathRegexp = regexp.MustCompile(`^[a-zA-Z0-9]+$`)
 
+//go:generate mockery --name=ShortenerService --output=../mocks --case=underscore
+type ShortenerService interface {
+	Shorten(context.Context, string) (string, error)
+	ShortenMany(context.Context, []model.BatchURL) ([]*model.BatchURL, error)
+	Restore(context.Context, string) (string, error)
+}
+
 type URLHandler struct {
-	service interface {
-		Shorten(context.Context, string) (string, error)
-		ShortenMany(context.Context, []model.BatchURL) ([]*model.BatchURL, error)
-		Restore(context.Context, string) (string, error)
-	}
+	service ShortenerService
+	logger  *zap.SugaredLogger
 }
 
-func NewURLHandler(s *service.ShortenerService) *URLHandler {
-	return &URLHandler{service: s}
-}
-
-func (h *URLHandler) Routes() http.Handler {
-	r := chi.NewRouter()
-
-	r.Post("/", h.ShortenHandler)
-	r.Post("/api/shorten", h.ShortenJSONHandler)
-	r.Post("/api/shorten/batch", h.ShortenBatchHandler)
-	r.Get("/{id}", h.RestoreHandler)
-
-	return r
+func NewURLHandler(s *service.ShortenerService, l *zap.SugaredLogger) *URLHandler {
+	return &URLHandler{service: s, logger: l}
 }
 
 func (h *URLHandler) ShortenHandler(res http.ResponseWriter, req *http.Request) {
@@ -58,7 +51,8 @@ func (h *URLHandler) ShortenHandler(res http.ResponseWriter, req *http.Request) 
 		case errors.Is(err, service.ErrDuplicate):
 			resStatus = http.StatusConflict
 		default:
-			http.Error(res, "can't shorten", http.StatusInternalServerError)
+			h.logger.Error("failed to shorten URL", zap.Error(err))
+			http.Error(res, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
 	}
@@ -67,7 +61,7 @@ func (h *URLHandler) ShortenHandler(res http.ResponseWriter, req *http.Request) 
 	res.WriteHeader(resStatus)
 	_, err = res.Write([]byte(shortURL))
 	if err != nil {
-		fmt.Println("error writing response:", err)
+		h.logger.Error("failed to write response", zap.Error(err))
 	}
 }
 
@@ -91,7 +85,8 @@ func (h *URLHandler) ShortenJSONHandler(res http.ResponseWriter, req *http.Reque
 		case errors.Is(err, service.ErrDuplicate):
 			resStatus = http.StatusConflict
 		default:
-			http.Error(res, "can't shorten", http.StatusInternalServerError)
+			h.logger.Error("failed to shorten URL", zap.Error(err))
+			http.Error(res, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
 	}
@@ -102,7 +97,8 @@ func (h *URLHandler) ShortenJSONHandler(res http.ResponseWriter, req *http.Reque
 	respBody.Shortened = shortURL
 	enc := json.NewEncoder(res)
 	if err = enc.Encode(respBody); err != nil {
-		http.Error(res, "can't encode response", http.StatusInternalServerError)
+		h.logger.Error("failed to encode response", zap.Error(err))
+		http.Error(res, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 }
@@ -122,7 +118,8 @@ func (h *URLHandler) ShortenBatchHandler(res http.ResponseWriter, req *http.Requ
 		if errors.Is(err, service.ErrInvalidURL) {
 			http.Error(res, "invalid URL", http.StatusBadRequest)
 		} else {
-			http.Error(res, "can't shorten", http.StatusInternalServerError)
+			h.logger.Error("failed to shorten URLs", zap.Error(err))
+			http.Error(res, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		}
 		return
 	}
@@ -132,7 +129,8 @@ func (h *URLHandler) ShortenBatchHandler(res http.ResponseWriter, req *http.Requ
 
 	enc := json.NewEncoder(res)
 	if err := enc.Encode(respBody); err != nil {
-		http.Error(res, "can't encode response", http.StatusInternalServerError)
+		h.logger.Error("failed to encode response", zap.Error(err))
+		http.Error(res, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 }
@@ -150,7 +148,8 @@ func (h *URLHandler) RestoreHandler(res http.ResponseWriter, req *http.Request) 
 		if errors.Is(err, service.ErrNotFound) {
 			http.NotFound(res, req)
 		} else {
-			http.Error(res, "internal error", http.StatusInternalServerError)
+			h.logger.Error("failed to restore URL", zap.Error(err))
+			http.Error(res, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		}
 		return
 	}

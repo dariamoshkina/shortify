@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -10,31 +9,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dariamoshkina/shortify/internal/model"
+	"github.com/dariamoshkina/shortify/internal/mocks"
 	"github.com/dariamoshkina/shortify/internal/service"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"go.uber.org/zap"
 )
-
-type MockShortenerService struct {
-	mock.Mock
-}
-
-func (m *MockShortenerService) Shorten(ctx context.Context, original string) (string, error) {
-	args := m.Called(original)
-	return args.String(0), args.Error(1)
-}
-
-func (m *MockShortenerService) Restore(ctx context.Context, id string) (string, error) {
-	args := m.Called(id)
-	return args.String(0), args.Error(1)
-}
-
-func (m *MockShortenerService) ShortenMany(ctx context.Context, urls []model.BatchURL) ([]*model.BatchURL, error) {
-	args := m.Called(urls)
-	return args.Get(0).([]*model.BatchURL), args.Error(1)
-}
 
 var (
 	requestURL   = "https://example.com"
@@ -44,9 +25,10 @@ var (
 	responseJSON = fmt.Sprintf(`{"result":"%s"}`, responseURL)
 )
 
-func newTestHandler() (*URLHandler, *MockShortenerService) {
-	mockService := new(MockShortenerService)
-	handler := &URLHandler{service: mockService}
+func newTestHandler(t *testing.T) (*URLHandler, *mocks.ShortenerService) {
+	mockService := mocks.NewShortenerService(t)
+	mockLogger := zap.NewNop()
+	handler := &URLHandler{service: mockService, logger: mockLogger.Sugar()}
 	return handler, mockService
 }
 
@@ -83,13 +65,6 @@ func TestShortenHandler(t *testing.T) {
 			expectedStatus: http.StatusMethodNotAllowed,
 		},
 		{
-			name:           "bad path",
-			method:         http.MethodPost,
-			path:           "/shorten",
-			body:           requestURL,
-			expectedStatus: http.StatusMethodNotAllowed,
-		},
-		{
 			name:           "service error",
 			method:         http.MethodPost,
 			path:           "/",
@@ -101,13 +76,13 @@ func TestShortenHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler, mockService := newTestHandler()
+			handler, mockService := newTestHandler(t)
 			if tt.expectedBody != "" || tt.mockReturnErr != nil {
-				mockService.On("Shorten", tt.body).Return(tt.expectedBody, tt.mockReturnErr)
+				mockService.On("Shorten", mock.Anything, tt.body).Return(tt.expectedBody, tt.mockReturnErr)
 			}
 
 			router := chi.NewRouter()
-			router.Mount("/", handler.Routes())
+			router.Post("/", handler.ShortenHandler)
 
 			w := doRequest(router, tt.method, tt.path, tt.body)
 			resp := w.Result()
@@ -151,13 +126,6 @@ func TestShortenJSONHandler(t *testing.T) {
 			expectedStatus: http.StatusMethodNotAllowed,
 		},
 		{
-			name:           "bad path",
-			method:         http.MethodPost,
-			path:           "/shorten",
-			jsonBody:       requestJSON,
-			expectedStatus: http.StatusMethodNotAllowed,
-		},
-		{
 			name:           "service error",
 			method:         http.MethodPost,
 			path:           "/api/shorten",
@@ -169,13 +137,13 @@ func TestShortenJSONHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler, mockService := newTestHandler()
+			handler, mockService := newTestHandler(t)
 			if tt.expectedJSONBody != "" || tt.mockReturnErr != nil {
-				mockService.On("Shorten", requestURL).Return(responseURL, tt.mockReturnErr)
+				mockService.On("Shorten", mock.Anything, requestURL).Return(responseURL, tt.mockReturnErr)
 			}
 
 			router := chi.NewRouter()
-			router.Mount("/", handler.Routes())
+			router.Post("/api/shorten", handler.ShortenJSONHandler)
 
 			w := doRequest(router, tt.method, tt.path, tt.jsonBody)
 			resp := w.Result()
@@ -235,13 +203,13 @@ func TestRestoreHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler, mockService := newTestHandler()
+			handler, mockService := newTestHandler(t)
 			if tt.mockReturnURL != "" || tt.mockReturnErr != nil {
-				mockService.On("Restore", shortenedID).Return(tt.mockReturnURL, tt.mockReturnErr)
+				mockService.On("Restore", mock.Anything, shortenedID).Return(tt.mockReturnURL, tt.mockReturnErr)
 			}
 
 			router := chi.NewRouter()
-			router.Mount("/", handler.Routes())
+			router.Get("/{id}", handler.RestoreHandler)
 
 			req := httptest.NewRequest(tt.method, tt.path, nil)
 			w := httptest.NewRecorder()
