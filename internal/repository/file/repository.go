@@ -1,6 +1,7 @@
 package file
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -16,17 +17,17 @@ var (
 	errWriteFile = errors.New("can't write file")
 )
 
-type fileURLRepository struct {
+type fileRepository struct {
 	filename string
 }
 
-func NewFileURLRepository(filename string) service.URLRepository {
-	return &fileURLRepository{
+func NewFileRepository(filename string) service.URLRepository {
+	return &fileRepository{
 		filename: filename,
 	}
 }
 
-func (f fileURLRepository) GetByID(id string) (*model.URL, error) {
+func (f fileRepository) GetByID(ctx context.Context, id string) (*model.URL, error) {
 	file, err := os.OpenFile(f.filename, os.O_RDONLY|os.O_CREATE, 0644)
 	if err != nil {
 		return nil, errOpenFile
@@ -50,16 +51,50 @@ func (f fileURLRepository) GetByID(id string) (*model.URL, error) {
 	return nil, service.ErrNotFound
 }
 
-func (f fileURLRepository) Store(url *model.URL) error {
+func (f fileRepository) Store(ctx context.Context, url model.URL) (*model.URL, error) {
 	file, err := os.OpenFile(f.filename, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
-		return errOpenFile
+		return nil, errOpenFile
 	}
 	defer file.Close()
 
 	var urls []model.URL
 	dec := json.NewDecoder(file)
 	if err = dec.Decode(&urls); err != nil {
+		if !errors.Is(err, io.EOF) {
+			return nil, errReadFile
+		}
+	}
+
+	for _, storedURL := range urls {
+		if storedURL.Original == url.Original {
+			return &storedURL, nil
+		}
+	}
+
+	if _, err = file.Seek(0, 0); err != nil {
+		return nil, errWriteFile
+	}
+
+	urls = append(urls, url)
+	enc := json.NewEncoder(file)
+	if err = enc.Encode(urls); err != nil {
+		return nil, errWriteFile
+	}
+
+	return nil, nil
+}
+
+func (f fileRepository) StoreMany(ctx context.Context, urls []model.URL) error {
+	file, err := os.OpenFile(f.filename, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return errOpenFile
+	}
+	defer file.Close()
+
+	var existingURLs []model.URL
+	dec := json.NewDecoder(file)
+	if err = dec.Decode(&existingURLs); err != nil {
 		if !errors.Is(err, io.EOF) {
 			return errReadFile
 		}
@@ -68,7 +103,9 @@ func (f fileURLRepository) Store(url *model.URL) error {
 		return errWriteFile
 	}
 
-	urls = append(urls, *url)
+	for _, url := range urls {
+		existingURLs = append(existingURLs, model.URL{ID: url.ID, Original: url.Original, Shortened: url.Shortened})
+	}
 	enc := json.NewEncoder(file)
 	if err = enc.Encode(urls); err != nil {
 		return errWriteFile
