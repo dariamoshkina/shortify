@@ -8,7 +8,9 @@ import (
 	"math/big"
 	"net/url"
 
+	"github.com/dariamoshkina/shortify/internal"
 	"github.com/dariamoshkina/shortify/internal/model"
+	"github.com/google/uuid"
 	"github.com/samber/lo"
 )
 
@@ -22,6 +24,7 @@ const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 type URLRepository interface {
 	GetByID(ctx context.Context, id string) (*model.URL, error)
+	GetByUserID(ctx context.Context, userID uuid.UUID) ([]model.URL, error)
 	Store(ctx context.Context, url model.URL) (*model.URL, error)
 	StoreMany(ctx context.Context, urls []model.URL) error
 }
@@ -63,8 +66,14 @@ func (s *ShortenerService) Shorten(ctx context.Context, original string) (string
 		}
 	}
 	shortened := fmt.Sprintf("%s/%s", s.baseURL, id)
+	userID := ctx.Value(internal.CtxKeyUserID{}).(uuid.UUID)
 
-	existingURL, err := s.repo.Store(ctx, model.URL{ID: id, Original: original, Shortened: shortened})
+	existingURL, err := s.repo.Store(ctx, model.URL{
+		ID:        id,
+		Original:  original,
+		Shortened: shortened,
+		UserID:    &userID,
+	})
 	if err != nil {
 		return "", err
 	}
@@ -85,6 +94,8 @@ func (s *ShortenerService) ShortenMany(ctx context.Context, urls []model.BatchUR
 	}) {
 		return nil, ErrInvalidURL
 	}
+
+	userID := ctx.Value(internal.CtxKeyUserID{}).(uuid.UUID)
 
 	var (
 		id      string
@@ -109,7 +120,7 @@ func (s *ShortenerService) ShortenMany(ctx context.Context, urls []model.BatchUR
 		}
 		shortened := fmt.Sprintf("%s/%s", s.baseURL, id)
 
-		toStore = append(toStore, model.URL{ID: id, Original: sourceURL.Original, Shortened: shortened})
+		toStore = append(toStore, model.URL{ID: id, Original: sourceURL.Original, Shortened: shortened, UserID: &userID})
 		result = append(result, &model.BatchURL{CorrID: sourceURL.CorrID, Shortened: shortened})
 	}
 
@@ -126,6 +137,20 @@ func (s *ShortenerService) Restore(ctx context.Context, id string) (string, erro
 		return "", err
 	}
 	return url.Original, nil
+}
+
+func (s *ShortenerService) GetUserURLs(ctx context.Context) ([]model.BatchURL, error) {
+	var result []model.BatchURL
+
+	userID := ctx.Value(internal.CtxKeyUserID{}).(uuid.UUID)
+	urls, err := s.repo.GetByUserID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	for _, url := range urls {
+		result = append(result, model.BatchURL{Original: url.Original, Shortened: url.Shortened})
+	}
+	return result, nil
 }
 
 func randString(n int) (string, error) {

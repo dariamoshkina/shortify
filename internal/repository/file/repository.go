@@ -9,6 +9,7 @@ import (
 
 	"github.com/dariamoshkina/shortify/internal/model"
 	"github.com/dariamoshkina/shortify/internal/service"
+	"github.com/google/uuid"
 )
 
 var (
@@ -104,7 +105,12 @@ func (f fileRepository) StoreMany(ctx context.Context, urls []model.URL) error {
 	}
 
 	for _, url := range urls {
-		existingURLs = append(existingURLs, model.URL{ID: url.ID, Original: url.Original, Shortened: url.Shortened})
+		existingURLs = append(existingURLs, model.URL{
+			ID:        url.ID,
+			Original:  url.Original,
+			Shortened: url.Shortened,
+			UserID:    url.UserID,
+		})
 	}
 	enc := json.NewEncoder(file)
 	if err = enc.Encode(urls); err != nil {
@@ -112,4 +118,29 @@ func (f fileRepository) StoreMany(ctx context.Context, urls []model.URL) error {
 	}
 
 	return nil
+}
+
+func (f fileRepository) GetByUserID(ctx context.Context, userID uuid.UUID) ([]model.URL, error) {
+	file, err := os.OpenFile(f.filename, os.O_RDONLY|os.O_CREATE, 0644)
+	if err != nil {
+		return nil, errOpenFile
+	}
+	defer file.Close()
+
+	var urls, result []model.URL
+	dec := json.NewDecoder(file)
+	if err = dec.Decode(&urls); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil, service.ErrNotFound
+		}
+		return nil, errReadFile
+	}
+
+	for _, url := range urls {
+		if url.UserID != nil && *url.UserID == userID {
+			result = append(result, url)
+		}
+	}
+
+	return result, nil
 }

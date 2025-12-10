@@ -21,6 +21,7 @@ type ShortenerService interface {
 	Shorten(context.Context, string) (string, error)
 	ShortenMany(context.Context, []model.BatchURL) ([]*model.BatchURL, error)
 	Restore(context.Context, string) (string, error)
+	GetUserURLs(ctx context.Context) ([]model.BatchURL, error)
 }
 
 type URLHandler struct {
@@ -156,4 +157,30 @@ func (h *URLHandler) RestoreHandler(res http.ResponseWriter, req *http.Request) 
 
 	res.Header().Set("Location", originalURL)
 	res.WriteHeader(http.StatusTemporaryRedirect)
+}
+
+func (h *URLHandler) UserURLsHandler(res http.ResponseWriter, req *http.Request) {
+	ctx := req.Context()
+
+	urls, err := h.service.GetUserURLs(ctx)
+	if err != nil {
+		h.logger.Error("failed to get user URLs", zap.Error(err))
+		http.Error(res, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	res.Header().Set("content-type", "application/json")
+
+	if len(urls) == 0 {
+		res.WriteHeader(http.StatusNoContent)
+		return
+	}
+	res.WriteHeader(http.StatusOK)
+
+	enc := json.NewEncoder(res)
+	if err = enc.Encode(urls); err != nil {
+		h.logger.Error("failed to encode response", zap.Error(err))
+		http.Error(res, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
 }
