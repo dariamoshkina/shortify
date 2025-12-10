@@ -15,6 +15,36 @@ type ShortenerService struct {
 	mock.Mock
 }
 
+// GetUserURLs provides a mock function with given fields: ctx
+func (_m *ShortenerService) GetUserURLs(ctx context.Context) ([]model.BatchURL, error) {
+	ret := _m.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetUserURLs")
+	}
+
+	var r0 []model.BatchURL
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context) ([]model.BatchURL, error)); ok {
+		return rf(ctx)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context) []model.BatchURL); ok {
+		r0 = rf(ctx)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]model.BatchURL)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = rf(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // Restore provides a mock function with given fields: _a0, _a1
 func (_m *ShortenerService) Restore(_a0 context.Context, _a1 string) (string, error) {
 	ret := _m.Called(_a0, _a1)

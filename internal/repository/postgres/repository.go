@@ -12,6 +12,7 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -64,21 +65,21 @@ func (r *postgresRepository) Store(ctx context.Context, url model.URL) (*model.U
 	var res model.URL
 
 	err := r.pool.QueryRow(ctx,
-		`INSERT INTO urls (original, short, short_path)
-		 VALUES ($1, $2, $3)
+		`INSERT INTO urls (original, short, short_path, user_id)
+		 VALUES ($1, $2, $3, $4)
 		 ON CONFLICT (original) DO NOTHING
-		 RETURNING original, short, short_path`,
-		url.Original, url.Shortened, url.ID,
-	).Scan(&res.Original, &res.Shortened, &res.ID)
+		 RETURNING original, short, short_path, user_id`,
+		url.Original, url.Shortened, url.ID, url.UserID,
+	).Scan(&res.Original, &res.Shortened, &res.ID, &res.UserID)
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			err = r.pool.QueryRow(ctx,
-				`SELECT original, short, short_path
+				`SELECT original, short, short_path, user_id
 				 FROM urls
 				 WHERE original = $1`,
 				url.Original,
-			).Scan(&res.Original, &res.Shortened, &res.ID)
+			).Scan(&res.Original, &res.Shortened, &res.ID, &res.UserID)
 			if err != nil {
 				return nil, err
 			}
@@ -94,9 +95,9 @@ func (r *postgresRepository) StoreMany(ctx context.Context, urls []model.URL) er
 	batch := &pgx.Batch{}
 	for _, u := range urls {
 		batch.Queue(
-			`INSERT INTO urls (original, short, short_path)
-             VALUES ($1, $2, $3);`,
-			u.Original, u.Shortened, u.ID,
+			`INSERT INTO urls (original, short, short_path, user_id)
+             VALUES ($1, $2, $3, $4);`,
+			u.Original, u.Shortened, u.ID, u.UserID,
 		)
 	}
 
@@ -110,4 +111,24 @@ func (r *postgresRepository) StoreMany(ctx context.Context, urls []model.URL) er
 	}
 
 	return nil
+}
+
+func (r *postgresRepository) GetByUserID(ctx context.Context, userID uuid.UUID) ([]model.URL, error) {
+	var result []model.URL
+
+	rows, err := r.pool.Query(ctx, "SELECT original, short FROM urls WHERE user_id = $1", userID.String())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var url model.URL
+		if err = rows.Scan(&url.Original, &url.Shortened); err != nil {
+			return nil, err
+		}
+		result = append(result, url)
+	}
+
+	return result, nil
 }
