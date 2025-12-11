@@ -20,8 +20,9 @@ var validPathRegexp = regexp.MustCompile(`^[a-zA-Z0-9]+$`)
 type ShortenerService interface {
 	Shorten(context.Context, string) (string, error)
 	ShortenMany(context.Context, []model.BatchURL) ([]*model.BatchURL, error)
-	Restore(context.Context, string) (string, error)
-	GetUserURLs(ctx context.Context) ([]model.BatchURL, error)
+	Restore(context.Context, string) (*model.URL, error)
+	GetUserURLs(context.Context) ([]model.BatchURL, error)
+	Delete(context.Context, <-chan string)
 }
 
 type URLHandler struct {
@@ -144,7 +145,7 @@ func (h *URLHandler) RestoreHandler(res http.ResponseWriter, req *http.Request) 
 		return
 	}
 
-	originalURL, err := h.service.Restore(req.Context(), urlID)
+	restoredURL, err := h.service.Restore(req.Context(), urlID)
 	if err != nil {
 		if errors.Is(err, service.ErrNotFound) {
 			http.NotFound(res, req)
@@ -155,7 +156,12 @@ func (h *URLHandler) RestoreHandler(res http.ResponseWriter, req *http.Request) 
 		return
 	}
 
-	res.Header().Set("Location", originalURL)
+	if restoredURL.Deleted != nil && *restoredURL.Deleted {
+		res.WriteHeader(http.StatusGone)
+		return
+	}
+
+	res.Header().Set("Location", restoredURL.Original)
 	res.WriteHeader(http.StatusTemporaryRedirect)
 }
 
@@ -183,4 +189,27 @@ func (h *URLHandler) UserURLsHandler(res http.ResponseWriter, req *http.Request)
 		http.Error(res, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
+}
+
+func (h *URLHandler) DeleteHandler(res http.ResponseWriter, req *http.Request) {
+	defer req.Body.Close()
+
+	var ids []string
+	dec := json.NewDecoder(req.Body)
+	if err := dec.Decode(&ids); err != nil {
+		http.Error(res, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	inputCh := make(chan string)
+	go func() {
+		defer close(inputCh)
+		for _, id := range ids {
+			inputCh <- id
+		}
+	}()
+
+	h.service.Delete(req.Context(), inputCh)
+
+	res.WriteHeader(http.StatusAccepted)
 }

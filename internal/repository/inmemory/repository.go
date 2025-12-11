@@ -53,3 +53,14 @@ func (r *inMemoryRepository) GetByUserID(ctx context.Context, userID uuid.UUID) 
 	}
 	return result, nil
 }
+
+func (r *inMemoryRepository) DeleteMany(ctx context.Context, urls []model.URL) error {
+	for _, u := range urls {
+		url, ok := r.storage[u.ID]
+		if ok && url.UserID != nil && url.UserID == u.UserID {
+			*url.Deleted = true
+			r.storage[url.ID] = url
+		}
+	}
+	return nil
+}

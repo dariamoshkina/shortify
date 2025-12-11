@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/dariamoshkina/shortify/internal/mocks"
+	"github.com/dariamoshkina/shortify/internal/model"
 	"github.com/dariamoshkina/shortify/internal/service"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
@@ -205,7 +206,7 @@ func TestRestoreHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			handler, mockService := newTestHandler(t)
 			if tt.mockReturnURL != "" || tt.mockReturnErr != nil {
-				mockService.On("Restore", mock.Anything, shortenedID).Return(tt.mockReturnURL, tt.mockReturnErr)
+				mockService.On("Restore", mock.Anything, shortenedID).Return(&model.URL{Original: tt.mockReturnURL}, tt.mockReturnErr)
 			}
 
 			router := chi.NewRouter()

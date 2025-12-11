@@ -15,9 +15,14 @@ type ShortenerService struct {
 	mock.Mock
 }
 
-// GetUserURLs provides a mock function with given fields: ctx
-func (_m *ShortenerService) GetUserURLs(ctx context.Context) ([]model.BatchURL, error) {
-	ret := _m.Called(ctx)
+// Delete provides a mock function with given fields: _a0, _a1
+func (_m *ShortenerService) Delete(_a0 context.Context, _a1 <-chan string) {
+	_m.Called(_a0, _a1)
+}
+
+// GetUserURLs provides a mock function with given fields: _a0
+func (_m *ShortenerService) GetUserURLs(_a0 context.Context) ([]model.BatchURL, error) {
+	ret := _m.Called(_a0)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetUserURLs")
@@ -26,10 +31,10 @@ func (_m *ShortenerService) GetUserURLs(ctx context.Context) ([]model.BatchURL, 
 	var r0 []model.BatchURL
 	var r1 error
 	if rf, ok := ret.Get(0).(func(context.Context) ([]model.BatchURL, error)); ok {
-		return rf(ctx)
+		return rf(_a0)
 	}
 	if rf, ok := ret.Get(0).(func(context.Context) []model.BatchURL); ok {
-		r0 = rf(ctx)
+		r0 = rf(_a0)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]model.BatchURL)
@@ -37,7 +42,7 @@ func (_m *ShortenerService) GetUserURLs(ctx context.Context) ([]model.BatchURL, 
 	}
 
 	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
-		r1 = rf(ctx)
+		r1 = rf(_a0)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -46,22 +51,24 @@ func (_m *ShortenerService) GetUserURLs(ctx context.Context) ([]model.BatchURL, 
 }
 
 // Restore provides a mock function with given fields: _a0, _a1
-func (_m *ShortenerService) Restore(_a0 context.Context, _a1 string) (string, error) {
+func (_m *ShortenerService) Restore(_a0 context.Context, _a1 string) (*model.URL, error) {
 	ret := _m.Called(_a0, _a1)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Restore")
 	}
 
-	var r0 string
+	var r0 *model.URL
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string) (string, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string) (*model.URL, error)); ok {
 		return rf(_a0, _a1)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string) string); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string) *model.URL); ok {
 		r0 = rf(_a0, _a1)
 	} else {
-		r0 = ret.Get(0).(string)
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*model.URL)
+		}
 	}
 
 	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {

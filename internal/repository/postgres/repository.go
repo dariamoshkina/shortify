@@ -47,10 +47,10 @@ func RunMigrations(connString string) error {
 }
 
 func (r *postgresRepository) GetByID(ctx context.Context, id string) (*model.URL, error) {
-	row := r.pool.QueryRow(ctx, "SELECT original, short FROM urls WHERE short_path = $1", id)
+	row := r.pool.QueryRow(ctx, "SELECT original, short, is_deleted FROM urls WHERE short_path = $1", id)
 
 	var url model.URL
-	err := row.Scan(&url.Original, &url.Shortened)
+	err := row.Scan(&url.Original, &url.Shortened, &url.Deleted)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, service.ErrNotFound
@@ -131,4 +131,25 @@ func (r *postgresRepository) GetByUserID(ctx context.Context, userID uuid.UUID) 
 	}
 
 	return result, nil
+}
+
+func (r *postgresRepository) DeleteMany(ctx context.Context, urls []model.URL) error {
+	batch := &pgx.Batch{}
+	for _, u := range urls {
+		batch.Queue(
+			`UPDATE urls SET is_deleted = true WHERE user_id = $1 AND short_path = $2`,
+			u.UserID.String(), u.ID,
+		)
+	}
+
+	br := r.pool.SendBatch(ctx, batch)
+	defer br.Close()
+
+	for range urls {
+		if _, err := br.Exec(); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

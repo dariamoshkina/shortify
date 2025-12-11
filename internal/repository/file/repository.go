@@ -144,3 +144,35 @@ func (f fileRepository) GetByUserID(ctx context.Context, userID uuid.UUID) ([]mo
 
 	return result, nil
 }
+
+func (f fileRepository) DeleteMany(ctx context.Context, urls []model.URL) error {
+	file, err := os.OpenFile(f.filename, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return errOpenFile
+	}
+	defer file.Close()
+
+	var fileUrls, updated []model.URL
+	dec := json.NewDecoder(file)
+	if err = dec.Decode(&fileUrls); err != nil {
+		if !errors.Is(err, io.EOF) {
+			return errReadFile
+		}
+	}
+	if _, err = file.Seek(0, 0); err != nil {
+		return errWriteFile
+	}
+
+	//for _, url := range fileUrls {
+	//	if url.UserID != nil && *url.UserID == userID && slices.Contains(ids, url.ID) {
+	//		url.Deleted = true
+	//	}
+	//	updated = append(updated, url)
+	//}
+	enc := json.NewEncoder(file)
+	if err = enc.Encode(updated); err != nil {
+		return errWriteFile
+	}
+
+	return nil
+}

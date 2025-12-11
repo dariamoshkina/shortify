@@ -66,7 +66,7 @@ func main() {
 		repo = inmemory.NewInMemoryRepository()
 	}
 
-	shortener := service.NewShortenerService(repo, appConfig.BaseURL, 6)
+	shortener := service.NewShortenerService(repo, appConfig.BaseURL, 6, 3)
 	urlHandler := handler.NewURLHandler(shortener, sugar)
 
 	r.Post("/", urlHandler.ShortenHandler)
@@ -74,6 +74,7 @@ func main() {
 	r.Post("/api/shorten/batch", urlHandler.ShortenBatchHandler)
 	r.Get("/{id}", urlHandler.RestoreHandler)
 	r.Get("/api/user/urls", urlHandler.UserURLsHandler)
+	r.Delete("/api/user/urls", urlHandler.DeleteHandler)
 
 	if err = http.ListenAndServe(appConfig.Addr, r); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to start server: %v\n", err)
