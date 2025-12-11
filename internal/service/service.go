@@ -8,7 +8,9 @@ import (
 	"math/big"
 	"net/url"
 
+	"github.com/dariamoshkina/shortify/internal"
 	"github.com/dariamoshkina/shortify/internal/model"
+	"github.com/google/uuid"
 	"github.com/samber/lo"
 )
 
@@ -22,18 +24,39 @@ const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 type URLRepository interface {
 	GetByID(ctx context.Context, id string) (*model.URL, error)
+	GetByUserID(ctx context.Context, userID uuid.UUID) ([]model.URL, error)
 	Store(ctx context.Context, url model.URL) (*model.URL, error)
 	StoreMany(ctx context.Context, urls []model.URL) error
+	DeleteMany(ctx context.Context, urls []model.URL) error
 }
 
 type ShortenerService struct {
-	repo    URLRepository
-	baseURL string
-	length  int
+	repo      URLRepository
+	baseURL   string
+	urlLength int
+
+	chunkSize    int
+	deleteChunks [][]model.URL
+	curChunk     []model.URL
+	chOut        chan model.URL
 }
 
-func NewShortenerService(repo URLRepository, baseURL string, length int) *ShortenerService {
-	return &ShortenerService{repo: repo, baseURL: baseURL, length: length}
+func NewShortenerService(repo URLRepository, baseURL string, urlLength, chunkSize int) *ShortenerService {
+	var (
+		deleteChunks [][]model.URL
+		curChunk     []model.URL
+	)
+	chOut := make(chan model.URL, chunkSize*2)
+
+	return &ShortenerService{
+		repo:         repo,
+		baseURL:      baseURL,
+		urlLength:    urlLength,
+		chunkSize:    chunkSize,
+		deleteChunks: deleteChunks,
+		chOut:        chOut,
+		curChunk:     curChunk,
+	}
 }
 
 func (s *ShortenerService) Shorten(ctx context.Context, original string) (string, error) {
@@ -49,7 +72,7 @@ func (s *ShortenerService) Shorten(ctx context.Context, original string) (string
 		err error
 	)
 	for {
-		id, err = randString(s.length)
+		id, err = randString(s.urlLength)
 		if err != nil {
 			return "", fmt.Errorf("can't shorten URL: %w", err)
 		}
@@ -63,8 +86,14 @@ func (s *ShortenerService) Shorten(ctx context.Context, original string) (string
 		}
 	}
 	shortened := fmt.Sprintf("%s/%s", s.baseURL, id)
+	userID := ctx.Value(internal.CtxKeyUserID{}).(uuid.UUID)
 
-	existingURL, err := s.repo.Store(ctx, model.URL{ID: id, Original: original, Shortened: shortened})
+	existingURL, err := s.repo.Store(ctx, model.URL{
+		ID:        id,
+		Original:  original,
+		Shortened: shortened,
+		UserID:    &userID,
+	})
 	if err != nil {
 		return "", err
 	}
@@ -86,6 +115,8 @@ func (s *ShortenerService) ShortenMany(ctx context.Context, urls []model.BatchUR
 		return nil, ErrInvalidURL
 	}
 
+	userID := ctx.Value(internal.CtxKeyUserID{}).(uuid.UUID)
+
 	var (
 		id      string
 		err     error
@@ -94,7 +125,7 @@ func (s *ShortenerService) ShortenMany(ctx context.Context, urls []model.BatchUR
 	)
 	for _, sourceURL := range urls {
 		for {
-			id, err = randString(s.length)
+			id, err = randString(s.urlLength)
 			if err != nil {
 				return nil, fmt.Errorf("can't shorten URL: %w", err)
 			}
@@ -109,7 +140,7 @@ func (s *ShortenerService) ShortenMany(ctx context.Context, urls []model.BatchUR
 		}
 		shortened := fmt.Sprintf("%s/%s", s.baseURL, id)
 
-		toStore = append(toStore, model.URL{ID: id, Original: sourceURL.Original, Shortened: shortened})
+		toStore = append(toStore, model.URL{ID: id, Original: sourceURL.Original, Shortened: shortened, UserID: &userID})
 		result = append(result, &model.BatchURL{CorrID: sourceURL.CorrID, Shortened: shortened})
 	}
 
@@ -120,12 +151,65 @@ func (s *ShortenerService) ShortenMany(ctx context.Context, urls []model.BatchUR
 	return result, nil
 }
 
-func (s *ShortenerService) Restore(ctx context.Context, id string) (string, error) {
-	url, err := s.repo.GetByID(ctx, id)
+func (s *ShortenerService) Restore(ctx context.Context, id string) (*model.URL, error) {
+	restoredURL, err := s.repo.GetByID(ctx, id)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return url.Original, nil
+	return restoredURL, nil
+}
+
+func (s *ShortenerService) GetUserURLs(ctx context.Context) ([]model.BatchURL, error) {
+	var result []model.BatchURL
+
+	userID := ctx.Value(internal.CtxKeyUserID{}).(uuid.UUID)
+	urls, err := s.repo.GetByUserID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	for _, u := range urls {
+		result = append(result, model.BatchURL{Original: u.Original, Shortened: u.Shortened})
+	}
+	return result, nil
+}
+
+func (s *ShortenerService) Delete(ctx context.Context, inputCh <-chan string) {
+	userID := ctx.Value(internal.CtxKeyUserID{}).(uuid.UUID)
+
+	urlsCh := make(chan model.URL, s.chunkSize)
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+
+		batch := make([]model.URL, 0, s.chunkSize)
+
+		flush := func() {
+			if len(batch) == 0 {
+				return
+			}
+			if err := s.repo.DeleteMany(ctx, batch); err != nil {
+				fmt.Println(err)
+			}
+			batch = batch[:0]
+		}
+
+		for u := range urlsCh {
+			batch = append(batch, u)
+			if len(batch) == s.chunkSize {
+				flush()
+			}
+		}
+
+		flush()
+	}()
+
+	for id := range inputCh {
+		urlsCh <- model.URL{ID: id, UserID: &userID}
+	}
+
+	close(urlsCh)
+	<-done
 }
 
 func randString(n int) (string, error) {

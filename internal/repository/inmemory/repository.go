@@ -5,6 +5,7 @@ import (
 
 	"github.com/dariamoshkina/shortify/internal/model"
 	"github.com/dariamoshkina/shortify/internal/service"
+	"github.com/google/uuid"
 )
 
 type inMemoryRepository struct {
@@ -39,6 +40,27 @@ func (r *inMemoryRepository) Store(ctx context.Context, url model.URL) (*model.U
 func (r *inMemoryRepository) StoreMany(ctx context.Context, urls []model.URL) error {
 	for _, url := range urls {
 		r.storage[url.ID] = url
+	}
+	return nil
+}
+
+func (r *inMemoryRepository) GetByUserID(ctx context.Context, userID uuid.UUID) ([]model.URL, error) {
+	var result []model.URL
+	for _, url := range r.storage {
+		if url.UserID != nil && *url.UserID == userID {
+			result = append(result, url)
+		}
+	}
+	return result, nil
+}
+
+func (r *inMemoryRepository) DeleteMany(ctx context.Context, urls []model.URL) error {
+	for _, u := range urls {
+		url, ok := r.storage[u.ID]
+		if ok && url.UserID != nil && url.UserID == u.UserID {
+			*url.Deleted = true
+			r.storage[url.ID] = url
+		}
 	}
 	return nil
 }

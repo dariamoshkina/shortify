@@ -9,6 +9,7 @@ import (
 
 	"github.com/dariamoshkina/shortify/internal/model"
 	"github.com/dariamoshkina/shortify/internal/service"
+	"github.com/google/uuid"
 )
 
 var (
@@ -104,10 +105,72 @@ func (f fileRepository) StoreMany(ctx context.Context, urls []model.URL) error {
 	}
 
 	for _, url := range urls {
-		existingURLs = append(existingURLs, model.URL{ID: url.ID, Original: url.Original, Shortened: url.Shortened})
+		existingURLs = append(existingURLs, model.URL{
+			ID:        url.ID,
+			Original:  url.Original,
+			Shortened: url.Shortened,
+			UserID:    url.UserID,
+		})
 	}
 	enc := json.NewEncoder(file)
 	if err = enc.Encode(urls); err != nil {
+		return errWriteFile
+	}
+
+	return nil
+}
+
+func (f fileRepository) GetByUserID(ctx context.Context, userID uuid.UUID) ([]model.URL, error) {
+	file, err := os.OpenFile(f.filename, os.O_RDONLY|os.O_CREATE, 0644)
+	if err != nil {
+		return nil, errOpenFile
+	}
+	defer file.Close()
+
+	var urls, result []model.URL
+	dec := json.NewDecoder(file)
+	if err = dec.Decode(&urls); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil, service.ErrNotFound
+		}
+		return nil, errReadFile
+	}
+
+	for _, url := range urls {
+		if url.UserID != nil && *url.UserID == userID {
+			result = append(result, url)
+		}
+	}
+
+	return result, nil
+}
+
+func (f fileRepository) DeleteMany(ctx context.Context, urls []model.URL) error {
+	file, err := os.OpenFile(f.filename, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return errOpenFile
+	}
+	defer file.Close()
+
+	var fileUrls, updated []model.URL
+	dec := json.NewDecoder(file)
+	if err = dec.Decode(&fileUrls); err != nil {
+		if !errors.Is(err, io.EOF) {
+			return errReadFile
+		}
+	}
+	if _, err = file.Seek(0, 0); err != nil {
+		return errWriteFile
+	}
+
+	//for _, url := range fileUrls {
+	//	if url.UserID != nil && *url.UserID == userID && slices.Contains(ids, url.ID) {
+	//		url.Deleted = true
+	//	}
+	//	updated = append(updated, url)
+	//}
+	enc := json.NewEncoder(file)
+	if err = enc.Encode(updated); err != nil {
 		return errWriteFile
 	}
 

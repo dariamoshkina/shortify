@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/dariamoshkina/shortify/internal/middleware"
 	"github.com/dariamoshkina/shortify/internal/repository/file"
 	"github.com/dariamoshkina/shortify/internal/repository/inmemory"
 	"github.com/dariamoshkina/shortify/internal/repository/postgres"
@@ -15,7 +16,6 @@ import (
 
 	"github.com/dariamoshkina/shortify/internal/config"
 	"github.com/dariamoshkina/shortify/internal/handler"
-	"github.com/dariamoshkina/shortify/internal/middleware"
 	"github.com/dariamoshkina/shortify/internal/service"
 )
 
@@ -28,8 +28,15 @@ func main() {
 	defer logger.Sync()
 
 	sugar := logger.Sugar()
+
+	appConfig, err := config.Init()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to initialize app: %v\n", err)
+		os.Exit(1)
+	}
+
 	r := chi.NewRouter()
-	appConfig := config.Parse()
+	r.Use(middleware.WithLogging(sugar), middleware.WithCompress, middleware.WithUserCookie(appConfig.EncryptionKey))
 
 	var (
 		repo service.URLRepository
@@ -59,19 +66,17 @@ func main() {
 		repo = inmemory.NewInMemoryRepository()
 	}
 
-	shortener := service.NewShortenerService(repo, appConfig.BaseURL, 6)
+	shortener := service.NewShortenerService(repo, appConfig.BaseURL, 6, 3)
 	urlHandler := handler.NewURLHandler(shortener, sugar)
 
 	r.Post("/", urlHandler.ShortenHandler)
 	r.Post("/api/shorten", urlHandler.ShortenJSONHandler)
 	r.Post("/api/shorten/batch", urlHandler.ShortenBatchHandler)
 	r.Get("/{id}", urlHandler.RestoreHandler)
+	r.Get("/api/user/urls", urlHandler.UserURLsHandler)
+	r.Delete("/api/user/urls", urlHandler.DeleteHandler)
 
-	loggerMiddleware := middleware.WithLogging(sugar)
-	loggedRouter := loggerMiddleware(r)
-	compressedRouter := middleware.WithCompress(loggedRouter)
-
-	if err = http.ListenAndServe(appConfig.Addr, compressedRouter); err != nil {
+	if err = http.ListenAndServe(appConfig.Addr, r); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to start server: %v\n", err)
 		os.Exit(1)
 	}
